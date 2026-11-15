@@ -1,1 +1,73 @@
+name: Build WORDY Android APK
 
+'on':
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    name: Build WORDY APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify source ZIP
+        run: |
+          if [ ! -f "WORDY-source.zip" ]; then
+            echo "ERROR: WORDY-source.zip was not found in the repository root."
+            exit 1
+          fi
+
+      - name: Extract WORDY source
+        run: |
+          mkdir -p wordy-project
+          unzip -q WORDY-source.zip -d wordy-project
+          test -f wordy-project/package.json
+          test -f wordy-project/capacitor.config.ts
+          test -f wordy-project/android/gradlew
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install web dependencies
+        working-directory: wordy-project
+        run: npm install --no-audit --no-fund
+
+      - name: Build web app
+        working-directory: wordy-project
+        run: npm run build
+
+      - name: Sync Capacitor Android project
+        working-directory: wordy-project
+        run: npx cap sync android
+
+      - name: Build Android debug APK
+        working-directory: wordy-project/android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Upload WORDY APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WORDY-Android-APK
+          path: wordy-project/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+          
